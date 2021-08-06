@@ -77,15 +77,23 @@ ExecDAX.GetGroups = () =>
     in
         groups;
 
+
 ExecDAX.GetReportsInGroup = (groupId, optional groupname as text) =>
     let
         endpoint = "groups/" &groupId& "/reports",
+        endpoint2 = "reports",
         responce = GetData(endpoint),
+        responce2 = GetData(endpoint2),
         reports = responce[value],
-        fn = (g,n,i) => "Workspace: "& g &" Report: "& n & " Dataset_id: "& i,
-        repname = List.Transform( reports, each fn(groupname, _[name], _[datasetId]) )
+        reports2 = responce2[value],
+        
+        fn = (g,n,i) => "Workspace: "& g &" | Report: "& n & " | Dataset_id: "& i,
+        
+        repname1 = List.Transform( reports, each fn(groupname, _[name], _[datasetId]) ),
+        repname2 = List.Transform( reports2, each fn("MyPersonalWorkspace", _[name], _[datasetId]) ),
+        allrep = List.Combine({repname2, repname1})
     in
-        repname;
+        allrep;
 
 parse_dataset_id = (str) => Text.AfterDelimiter(str, " Dataset_id: ");
 
