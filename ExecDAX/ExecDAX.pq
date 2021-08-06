@@ -24,19 +24,12 @@ shared ExecDAX.NavTableNested = () as table =>
         lv1 = #table(
             table_header,
             {
-                {"ExecuteQueries", "ExecuteQueries", ExecDAX.ExecuteQueries, "function", "function", "true"},
-                {"GetReportList", "GetReportList", ExecDAX.GetReportNameList, "function", "function", "true"}
-            }   
-        ),
-
-        lv0 = #table(
-            table_header,
-            {
-                {"PowerBI Service", "PowerBIService", NavTable(lv1), "Folder", "Folder", false}
+                {"ExecuteQueries", "ExecuteQueries", ExecDAX.ExecuteQueries, "function", "function", "true"}
+                //{"GetReportList", "GetReportList", ExecDAX.GetReportNameList, "function", "function", "true"}
             }   
         )
     in
-        NavTable(lv0);
+        NavTable(lv1);
 
 
 ExecDAX.ExecuteQueries = Value.ReplaceType(ExecDAX.ExecuteQueriesImpl, ExecDAX.ExecuteQueriesType);
@@ -44,35 +37,29 @@ ExecDAX.ExecuteQueries = Value.ReplaceType(ExecDAX.ExecuteQueriesImpl, ExecDAX.E
 ExecDAX.ExecuteQueriesType = 
     type function (  
                      dataset_id as (type text meta [
-                        Documentation.FieldCaption = "dataset_id",
-                        Documentation.AllowedValues = ExecDAX.GetReportNameList(),
-                        Documentation.SampleValues = {"08809f32-0b14-4fd9-a6b8-5716f3f39630"}
+                        Documentation.FieldCaption = "Report",
+                        Documentation.AllowedValues = ExecDAX.GetReportNameList()
                         ]),
                      dax as (type text meta [
                         Documentation.FieldCaption = "DAX", 
-                        Documentation.SampleValues = {"EVALUATE ROW(""test"", 1)"""},
+                        Documentation.SampleValues = {dax_sample},
                         Formatting.IsMultiLine = true,
                         Formatting.IsCode = true
-                     ]),
-                     includenulls as (type logical meta [
-                        Documentation.FieldCaption = "includenulls",
-                        Documentation.AllowedValues = {false,true},
-                        Documentation.SampleValues = {}
-                        ])
+                     ])
                    )
         as function meta [
             Documentation.Name = "ExecuteQueries",
             Documentation.LongDescription = "Returns DAX result from dataset."
     ];
 
-ExecDAX.ExecuteQueriesImpl = (report as text, dax as text, includenulls as logical) =>
+ExecDAX.ExecuteQueriesImpl = (report as text, dax as text) =>
     let
         dataset_id = parse_dataset_id(report),
         endpoint = "datasets/" &dataset_id& "/executeQueries",
         content = Json.FromValue(
                 [ 
                     queries = { [query = dax] },
-                    serializerSettings = [includeNulls = includenulls]
+                    serializerSettings = [includeNulls = true]
                 ]
            ),
         responce = GetData(endpoint, null, content),
@@ -193,3 +180,6 @@ toTable = (lstrec as list, optional index as number) as table =>
 
 add_rec = (rec as record, recname as text, value as any) =>
     if value is null then rec else Record.AddField(rec, recname, value);
+
+
+dax_sample = "EVALUATE GENERATESERIES(1, 10, 1)";
