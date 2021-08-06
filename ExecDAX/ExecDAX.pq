@@ -17,33 +17,28 @@ windowHeight = 1024;
 
 shared ExecDAX.NavTableNested = () as table =>
     let
-        objects = #table(
+
+        NavTable = (tb as table) => Table.ToNavigationTable(tb, {"Key"}, "Name", "Data", "ItemKind", "ItemName", "IsLeaf"),
+
+        lv1 = #table(
             {"Name", "Key", "Data", "ItemKind", "ItemName", "IsLeaf"},
+            
             {
-                {"PowerBIService", "PowerBIServiceFunc", CreateNavTable("ExecuteQueries"), "Table", "Table", "false"}
-            }
+                {"ExecuteQueries", "ExecuteQueries", ExecDAX.ExecuteQueries, "function", "function", "true"},
+                {"GetReportList", "GetReportList", ExecDAX.GetReportNameList, "function", "function", "true"}
+            }   
         ),
-        NavTable = Table.ToNavigationTable(objects, {"Key"}, "Name", "Data", "ItemKind", "ItemName", "IsLeaf")
-    in
-        NavTable;
 
-CreateNavTable = (tbname) as table => 
-    let
-        objects =[
-             ExecuteQueries = #table(
-                    {"Name", "Key", "Data", "ItemKind", "ItemName", "IsLeaf"},
-                    {
-                        {"ExecuteQueries","ExecuteQueries", ExecDAX.ExecuteQueries, "function", "function", "true"},
-                        {"GetGroups", "GetGroups", ExecDAX.GetGroups, "function", "function", "true"}
-                    }
-                )
-
-            ],
- 
-        Table = Record.Field(objects, tbname),
-        NavTable = Table.ToNavigationTable(Table, {"Key"}, "Name", "Data", "ItemKind", "ItemName", "IsLeaf")
+        lv0 = #table(
+            {"Name", "Key", "Data", "ItemKind", "ItemName", "IsLeaf"},
+            
+            {
+                {"PowerBI Service", "PowerBIService", NavTable(lv1), "Folder", "Folder", false}
+            }   
+        )
     in
-        NavTable;
+        NavTable(lv0);
+
 
 ExecDAX.ExecuteQueries = Value.ReplaceType(ExecDAX.ExecuteQueriesImpl, ExecDAX.ExecuteQueriesType);
 
@@ -51,6 +46,7 @@ ExecDAX.ExecuteQueriesType =
     type function (  
                      dataset_id as (type text meta [
                         Documentation.FieldCaption = "dataset_id",
+                        Documentation.AllowedValues = ExecDAX.GetReportNameList(),
                         Documentation.SampleValues = {"08809f32-0b14-4fd9-a6b8-5716f3f39630"}
                         ]),
                      dax as (type text meta [
@@ -61,8 +57,8 @@ ExecDAX.ExecuteQueriesType =
                      ]),
                      includenulls as (type logical meta [
                         Documentation.FieldCaption = "includenulls",
-                        Formatting.IsMultiLine = true,
-                        Formatting.IsCode = true
+                        Documentation.AllowedValues = {false,true},
+                        Documentation.SampleValues = {}
                         ])
                    )
         as function meta [
@@ -70,8 +66,9 @@ ExecDAX.ExecuteQueriesType =
             Documentation.LongDescription = "Returns DAX result from dataset."
     ];
 
-ExecDAX.ExecuteQueriesImpl = (dataset_id as text, dax as text, includenulls as logical) =>
+ExecDAX.ExecuteQueriesImpl = (report as text, dax as text, includenulls as logical) =>
     let
+        dataset_id = parse_dataset_id(report),
         endpoint = "datasets/" &dataset_id& "/executeQueries",
         content = Json.FromValue(
                 [ 
@@ -80,7 +77,8 @@ ExecDAX.ExecuteQueriesImpl = (dataset_id as text, dax as text, includenulls as l
                 ]
            ),
         responce = GetData(endpoint, null, content),
-        table = toTable(responce)
+        lstrec = responce[results]{0}[tables]{0}[rows],
+        table = toTable(lstrec)
     in
         table;
 
@@ -88,10 +86,30 @@ ExecDAX.ExecuteQueriesImpl = (dataset_id as text, dax as text, includenulls as l
 ExecDAX.GetGroups = () =>
     let
         endpoint = "groups",
-        responce = GetData(endpoint)
+        responce = GetData(endpoint),
+        groups = responce[value]
     in
-        responce;
+        groups;
 
+ExecDAX.GetReportsInGroup = (groupId, optional groupname as text) =>
+    let
+        endpoint = "groups/" &groupId& "/reports",
+        responce = GetData(endpoint),
+        reports = responce[value],
+        fn = (g,n,i) => "Workspace: "& g &" Report: "& n & " Dataset_id: "& i,
+        repname = List.Transform( reports, each fn(groupname, _[name], _[datasetId]) )
+    in
+        repname;
+
+parse_dataset_id = (str) => Text.AfterDelimiter(str, " Dataset_id: ");
+
+ExecDAX.GetReportNameList = () =>
+    let
+        groups = ExecDAX.GetGroups(),
+        replist = List.Transform(groups, each ExecDAX.GetReportsInGroup( _[id], _[name])),
+        combine = List.Combine(replist)
+    in 
+        combine;
 
 GetData = (endpoint as text, optional params as record, optional content) =>
     let
@@ -160,9 +178,8 @@ Table.ToNavigationTable = (
         navigationTable;
 
 
-toTable = (responce as record, optional index as number) as table =>
+toTable = (lstrec as list, optional index as number) as table =>
     let
-        lstrec = responce[results]{0}[tables]{0}[rows],
         fieldnames = 
             let
                 toprows = if index is null then lstrec else List.FirstN(lstrec, index),
