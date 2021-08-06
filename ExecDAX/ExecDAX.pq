@@ -8,6 +8,8 @@ logout_uri = "https://login.microsoftonline.com/logout.srf";
 resourceUri = "https://analysis.windows.net/powerbi/api";
 
 
+access_token = Extension.CurrentCredential()[access_token];
+
 windowWidth = 720;
 windowHeight = 1024;
 
@@ -31,7 +33,8 @@ CreateNavTable = (tbname) as table =>
              ExecuteQueries = #table(
                     {"Name", "Key", "Data", "ItemKind", "ItemName", "IsLeaf"},
                     {
-                        {"ExecuteQueries","ExecuteQueries", ExecDAX.ExecuteQueries, "function", "function", "true"}
+                        {"ExecuteQueries","ExecuteQueries", ExecDAX.ExecuteQueries, "function", "function", "true"},
+                        {"GetGroups", "GetGroups", ExecDAX.GetGroups, "function", "function", "true"}
                     }
                 )
 
@@ -69,32 +72,41 @@ ExecDAX.ExecuteQueriesType =
 
 ExecDAX.ExecuteQueriesImpl = (dataset_id as text, dax as text, includenulls as logical) =>
     let
-        url = "https://api.powerbi.com/v1.0/myorg/",
         endpoint = "datasets/" &dataset_id& "/executeQueries",
-        token = Extension.CurrentCredential()[access_token],
-        headers = [
-            #"Content-Type" = "application/json", 
-            #"Authorization" = "Bearer " &token
-            ],
-        content =  
-            Json.FromValue(
+        content = Json.FromValue(
                 [ 
                     queries = { [query = dax] },
                     serializerSettings = [includeNulls = includenulls]
                 ]
-            ),
-        responce = Json.Document(
-                        Web.Contents( url, 
-                            [RelativePath = endpoint,
-                             Content = content, 
-                             Headers  = headers, 
-                             ManualCredentials = true]
-                             )
-                   ),
-        lstrec = responce[results]{0}[tables]{0}[rows],
-        table = toTable(lstrec)
+           ),
+        responce = GetData(endpoint, null, content),
+        table = toTable(responce)
     in
         table;
+
+
+ExecDAX.GetGroups = () =>
+    let
+        endpoint = "groups",
+        responce = GetData(endpoint)
+    in
+        responce;
+
+
+GetData = (endpoint as text, optional params as record, optional content) =>
+    let
+        url = "https://api.powerbi.com/v1.0/myorg/",
+        headers = [#"Content-Type" = "application/json", #"Authorization" = "Bearer " &access_token],
+        options = 
+            let 
+                required = [RelativePath = endpoint, Headers = headers, ManualCredentials = true],
+                addparams = add_rec(required, "Query", params),
+                addcontent = add_rec(addparams, "Content", content)
+            in 
+                addcontent,
+        source = Json.Document(Web.Contents(url, options))
+    in
+        source;
 
 // Data Source Kind description
 ExecDAX = [
@@ -148,8 +160,9 @@ Table.ToNavigationTable = (
         navigationTable;
 
 
-toTable = (lstrec as list, optional index as number) as table =>
+toTable = (responce as record, optional index as number) as table =>
     let
+        lstrec = responce[results]{0}[tables]{0}[rows],
         fieldnames = 
             let
                 toprows = if index is null then lstrec else List.FirstN(lstrec, index),
@@ -160,3 +173,7 @@ toTable = (lstrec as list, optional index as number) as table =>
         tbl = Table.FromRecords(lstrec, fieldnames, MissingField.UseNull)
     in
         tbl;
+
+
+add_rec = (rec as record, recname as text, value as any) =>
+    if value is null then rec else Record.AddField(rec, recname, value);
