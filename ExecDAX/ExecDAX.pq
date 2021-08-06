@@ -19,10 +19,10 @@ shared ExecDAX.NavTableNested = () as table =>
     let
 
         NavTable = (tb as table) => Table.ToNavigationTable(tb, {"Key"}, "Name", "Data", "ItemKind", "ItemName", "IsLeaf"),
+        table_header = {"Name", "Key", "Data", "ItemKind", "ItemName", "IsLeaf"},
 
         lv1 = #table(
-            {"Name", "Key", "Data", "ItemKind", "ItemName", "IsLeaf"},
-            
+            table_header,
             {
                 {"ExecuteQueries", "ExecuteQueries", ExecDAX.ExecuteQueries, "function", "function", "true"},
                 {"GetReportList", "GetReportList", ExecDAX.GetReportNameList, "function", "function", "true"}
@@ -30,8 +30,7 @@ shared ExecDAX.NavTableNested = () as table =>
         ),
 
         lv0 = #table(
-            {"Name", "Key", "Data", "ItemKind", "ItemName", "IsLeaf"},
-            
+            table_header,
             {
                 {"PowerBI Service", "PowerBIService", NavTable(lv1), "Folder", "Folder", false}
             }   
